@@ -1,0 +1,21 @@
+{
+  "config": {
+    "sessionActive": true,
+    "endTime": 1772816784464,
+    "allowedIpPrefix": "127.0.0.1"
+  },
+  "attendance": [
+    {
+      "studentId": "20261234",
+      "email": "student@university.edu",
+      "timestamp": 1772816323103,
+      "ip": "127.0.0.1"
+    },
+    {
+      "studentId": "20261236",
+      "email": "student1@university.edu",
+      "timestamp": 1772816500740,
+      "ip": "127.0.0.1"
+    }
+  ]
+}
