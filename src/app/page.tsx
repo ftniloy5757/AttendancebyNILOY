@@ -15,6 +15,13 @@ function StudentAttendanceContent() {
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [status, setStatus] = useState<{ type: "idle" | "loading" | "success" | "error"; message?: string }>({ type: "idle" });
 
+  useEffect(() => {
+    // @ts-ignore
+    if (session?.user?.role === "admin") {
+      window.location.href = "/admin/dashboard";
+    }
+  }, [session]);
+
   const fetchSessions = async () => {
     try {
       const res = await fetch("/api/attendance/sessions"); // We will create this

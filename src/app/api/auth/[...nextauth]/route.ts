@@ -17,14 +17,14 @@ export const authOptions: NextAuthOptions = {
 
                 // 1. Check if Master Admin
                 if (MASTER_ADMINS.includes(email)) {
-                    return { id: email, email };
+                    return { id: email, email, role: 'admin' };
                 }
 
                 // 2. Check if dynamically added admin
                 try {
                     const db = readDb();
                     if (db.admins.includes(email)) {
-                        return { id: email, email };
+                        return { id: email, email, role: 'admin' };
                     }
                 } catch (err) {
                     console.error("DB lookup failed in NextAuth:", err);
@@ -32,13 +32,29 @@ export const authOptions: NextAuthOptions = {
 
                 // 3. Check if Bracu Student
                 if (email.endsWith("@g.bracu.ac.bd")) {
-                    return { id: email, email };
+                    return { id: email, email, role: 'student' };
                 }
 
                 return null;
             }
         })
     ],
+    callbacks: {
+        async jwt({ token, user }) {
+            if (user) {
+                // @ts-ignore
+                token.role = user.role;
+            }
+            return token;
+        },
+        async session({ session, token }) {
+            if (session?.user) {
+                // @ts-ignore
+                session.user.role = token.role;
+            }
+            return session;
+        }
+    },
     secret: process.env.NEXTAUTH_SECRET || "fallback_secret_for_local_development",
     pages: {
         signIn: '/login',
