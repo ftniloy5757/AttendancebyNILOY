@@ -1,86 +1,69 @@
 import { NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
 import { headers } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
+import dbConnect from '@/lib/mongoose';
+import Session from '@/models/Session';
 
 export async function POST(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
-        if (!session || !session.user?.email) {
+        const authSession = await getServerSession(authOptions);
+        if (!authSession || !authSession.user?.email) {
             return NextResponse.json({ error: 'Unauthorized: You must be logged in with your varsity account.' }, { status: 401 });
         }
 
-        const email = session.user.email; // Extracted safely from the server
+        const email = authSession.user.email.toLowerCase();
 
         if (!email.endsWith("@g.bracu.ac.bd")) {
             return NextResponse.json({ error: 'Unauthorized: Only @g.bracu.ac.bd accounts allowed.' }, { status: 403 });
         }
 
-        const db = readDb();
+        const { studentId, section, sessionId } = await req.json();
 
-        // 1. Session check
-        if (!db.config.sessionActive || Date.now() > db.config.endTime) {
-            if (db.config.sessionActive && Date.now() > db.config.endTime) {
-                db.config.sessionActive = false;
-                writeDb(db);
-            }
-            return NextResponse.json({ error: 'No active attendance session.' }, { status: 403 });
+        if (!studentId || !section || !sessionId) {
+            return NextResponse.json({ error: 'Student ID, Section, and Session are required.' }, { status: 400 });
         }
 
-        // 2. IP check
+        await dbConnect();
+        const session = await Session.findById(sessionId);
+
+        if (!session || !session.active) {
+            return NextResponse.json({ error: 'This attendance session is no longer active.' }, { status: 403 });
+        }
+
+        // 2. Exact IP Lock Check
         const headersList = await headers();
         let realIp = headersList.get('x-real-ip') || headersList.get('x-forwarded-for') || 'Unknown';
         if (realIp.includes(',')) realIp = realIp.split(',')[0].trim();
 
-        const allowedPrefix = db.config.allowedIpPrefix.trim();
-
-        if (allowedPrefix && !realIp.startsWith(allowedPrefix)) {
-            return NextResponse.json({ error: 'You are not on the classroom network (IP Mismatch).' }, { status: 403 });
+        if (session.allowedIp && realIp !== session.allowedIp) {
+            return NextResponse.json({ error: `Network IP Mismatch. You must be on the exact same network as the instructor. (Your IP: ${realIp})` }, { status: 403 });
         }
 
-        const { studentId } = await req.json();
+        // 3. Duplicate check within this specific session
+        const alreadySubmitted = session.attendance.some(
+            (r: any) => r.studentId === studentId || r.email === email
+        );
 
-        if (!studentId) {
-            return NextResponse.json({ error: 'Student ID is required.' }, { status: 400 });
-        }
-
-        // 3. Duplicate check
-        const existing = db.attendance.find(r => r.studentId === studentId || r.email === email);
-        if (existing) {
-            return NextResponse.json({ error: 'Attendance already recorded.' }, { status: 409 });
+        if (alreadySubmitted) {
+            return NextResponse.json({ error: 'Attendance already recorded for this session.' }, { status: 409 });
         }
 
         // 4. Save record
-        db.attendance.push({
+        session.attendance.push({
             studentId,
             email,
-            timestamp: Date.now(),
-            ip: realIp
+            section,
+            ip: realIp,
+            timestamp: new Date()
         });
 
-        writeDb(db);
+        await session.save();
 
         return NextResponse.json({ success: true, message: 'Attendance recorded successfully!' });
 
     } catch (error) {
+        console.error(error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
-}
-
-export async function GET() {
-    const db = readDb();
-    let status = "Inactive";
-    if (db.config.sessionActive) {
-        if (Date.now() <= db.config.endTime) {
-            status = "Active";
-        } else {
-            status = "Expired";
-        }
-    }
-
-    return NextResponse.json({
-        sessionActive: status === "Active",
-        endTime: db.config.endTime
-    });
 }

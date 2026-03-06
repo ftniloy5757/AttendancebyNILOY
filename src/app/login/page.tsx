@@ -9,31 +9,6 @@ function LoginContent() {
     const authError = searchParams.get("error");
     const callbackUrl = searchParams.get("callbackUrl") || "/";
 
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [status, setStatus] = useState<{ type: "idle" | "loading" | "error"; message?: string }>({ type: "idle" });
-
-    const handleCredentialsLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setStatus({ type: "loading" });
-
-        if (!email.toLowerCase().endsWith("@g.bracu.ac.bd")) {
-            setStatus({ type: "error", message: "Please use your @g.bracu.ac.bd email." });
-            return;
-        }
-
-        const res = await signIn("credentials", {
-            email,
-            password,
-            redirect: true,
-            callbackUrl,
-        });
-
-        if (res?.error) {
-            setStatus({ type: "error", message: "Invalid credentials." });
-        }
-    };
-
     return (
         <main className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
             <div className="w-full max-w-md bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8 transform transition-all">
@@ -50,62 +25,6 @@ function LoginContent() {
                 )}
 
                 <div className="space-y-6">
-                    <form onSubmit={handleCredentialsLogin} className="space-y-4">
-                        <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
-                                University Email
-                            </label>
-                            <input
-                                type="email"
-                                id="email"
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="student@g.bracu.ac.bd"
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition-all"
-                                disabled={status.type === "loading"}
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
-                                Password
-                            </label>
-                            <input
-                                type="password"
-                                id="password"
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition-all"
-                                disabled={status.type === "loading"}
-                            />
-                        </div>
-
-                        {status.type === "error" && (
-                            <div className="text-red-200 text-sm bg-red-500/20 px-3 py-2 rounded-lg border border-red-500/30">
-                                {status.message}
-                            </div>
-                        )}
-
-                        <button
-                            type="submit"
-                            disabled={status.type === "loading"}
-                            className={`w-full py-3.5 rounded-xl text-white font-semibold shadow-lg transition-all duration-300 ${status.type === "loading"
-                                ? "bg-white/20 cursor-not-allowed"
-                                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 hover:shadow-purple-500/25 active:scale-[0.98]"
-                                }`}
-                        >
-                            {status.type === "loading" ? "Signing In..." : "Sign In"}
-                        </button>
-                    </form>
-
-                    <div className="relative flex py-2 items-center">
-                        <div className="flex-grow border-t border-white/20"></div>
-                        <span className="flex-shrink-0 mx-4 text-white/50 text-sm">OR</span>
-                        <div className="flex-grow border-t border-white/20"></div>
-                    </div>
-
                     <button
                         onClick={() => signIn("google", { callbackUrl })}
                         className="w-full py-3.5 bg-white text-indigo-900 rounded-xl font-bold shadow-lg hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"

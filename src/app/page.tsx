@@ -1,39 +1,42 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-
-import { Suspense } from "react";
 
 function StudentAttendanceContent() {
   const { data: session, status: authStatus } = useSession();
   const searchParams = useSearchParams();
   const authError = searchParams.get("error");
 
-  // We no longer manually ask for email. We use the one from the session.
   const [studentId, setStudentId] = useState("");
-  const [sessionActive, setSessionActive] = useState(false);
+  const [section, setSection] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [status, setStatus] = useState<{ type: "idle" | "loading" | "success" | "error"; message?: string }>({ type: "idle" });
 
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const res = await fetch("/api/attendance");
-        const data = await res.json();
-        setSessionActive(data.sessionActive);
-      } catch (err) {
-        setSessionActive(false);
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch("/api/attendance/sessions"); // We will create this
+      const data = await res.json();
+      setActiveSessions(data.sessions || []);
+      if (data.sessions?.length === 1) {
+        setSelectedSessionId(data.sessions[0]._id);
       }
-    };
-    checkSession();
-    const interval = setInterval(checkSession, 5000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 10000);
     return () => clearInterval(interval);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session?.user?.email || !studentId) return;
+    if (!session?.user?.email || !studentId || !section || !selectedSessionId) return;
 
     setStatus({ type: "loading" });
 
@@ -41,9 +44,7 @@ function StudentAttendanceContent() {
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Notice we don't send email here from the form. 
-        // We still send it just in case, but the server will override it securely.
-        body: JSON.stringify({ studentId }),
+        body: JSON.stringify({ studentId, section, sessionId: selectedSessionId }),
       });
 
       const data = await res.json();
@@ -51,6 +52,7 @@ function StudentAttendanceContent() {
       if (res.ok) {
         setStatus({ type: "success", message: "Attendance recorded successfully!" });
         setStudentId("");
+        setSection("");
       } else {
         setStatus({ type: "error", message: data.error || "Failed to record attendance." });
       }
@@ -74,7 +76,6 @@ function StudentAttendanceContent() {
           </div>
         )}
 
-        {/* Not Logged In - Redirect */}
         {authStatus !== "loading" && !session && (
           <div className="space-y-6">
             <div className="text-center p-4 bg-white/5 rounded-2xl border border-white/10">
@@ -91,11 +92,10 @@ function StudentAttendanceContent() {
           </div>
         )}
 
-        {/* Logged in, but no active session from Admin */}
-        {session && !sessionActive && status.type !== "success" && (
+        {session && activeSessions.length === 0 && status.type !== "success" && (
           <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 text-center">
             <p className="text-red-100 font-medium tracking-wide">
-              No active session right now.
+              No active classes right now.
             </p>
             <p className="text-red-200/80 text-xs mt-1 mb-4">
               Please wait for your instructor to start the attendance timer.
@@ -106,33 +106,69 @@ function StudentAttendanceContent() {
           </div>
         )}
 
-        {/* Logged in AND active session */}
-        {session && sessionActive && (
+        {session && activeSessions.length > 0 && (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex justify-between items-center">
-              <div className="overflow-hidden">
+              <div className="overflow-hidden pr-2">
                 <p className="text-xs text-white/60 mb-0.5">Logged in as</p>
                 <p className="text-sm font-medium text-white truncate">{session.user?.email}</p>
               </div>
-              <button type="button" onClick={() => signOut()} className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors">
+              <button type="button" onClick={() => signOut()} className="whitespace-nowrap text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors">
                 Sign out
               </button>
             </div>
 
             <div>
-              <label htmlFor="studentId" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
-                Student ID
+              <label htmlFor="classSelector" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
+                Select Class
               </label>
-              <input
-                type="text"
-                id="studentId"
+              <select
+                id="classSelector"
                 required
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="e.g. 20260010"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition-all"
-                disabled={status.type === "loading" || status.type === "success"}
-              />
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white outline-none focus:ring-2 focus:ring-purple-300"
+              >
+                <option value="" disabled className="text-slate-800">-- Choose your class --</option>
+                {activeSessions.map(s => (
+                  <option key={s._id} value={s._id} className="text-slate-800">
+                    {s.className} (by {s.teacherEmail})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label htmlFor="studentId" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
+                  Student ID
+                </label>
+                <input
+                  type="text"
+                  id="studentId"
+                  required
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  placeholder="e.g. 20260010"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-300 transition-all"
+                  disabled={status.type === "loading" || status.type === "success"}
+                />
+              </div>
+              <div className="w-1/3">
+                <label htmlFor="section" className="block text-sm font-medium text-white/90 mb-1.5 ml-1">
+                  Section
+                </label>
+                <input
+                  type="text"
+                  id="section"
+                  required
+                  value={section}
+                  onChange={(e) => setSection(e.target.value)}
+                  placeholder="e.g. 05"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-300 transition-all"
+                  disabled={status.type === "loading" || status.type === "success"}
+                />
+              </div>
             </div>
 
             {status.type === "error" && (

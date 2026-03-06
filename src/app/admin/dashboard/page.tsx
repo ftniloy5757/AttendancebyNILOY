@@ -1,201 +1,214 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-type Config = { sessionActive: boolean; endTime: number; allowedIpPrefix: string };
-type Attendance = { studentId: string; email: string; timestamp: number; ip: string };
-
 export default function AdminDashboard() {
-    const [config, setConfig] = useState<Config | null>(null);
-    const [attendance, setAttendance] = useState<Attendance[]>([]);
-    const [timerMins, setTimerMins] = useState(5);
-    const [ipPrefix, setIpPrefix] = useState("");
+    const { data: session, status } = useSession();
     const router = useRouter();
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    const [adminIp, setAdminIp] = useState("");
+    const [sessions, setSessions] = useState<any[]>([]);
+    const [admins, setAdmins] = useState<any[]>([]);
+
+    const [className, setClassName] = useState("");
+    const [newAdminEmail, setNewAdminEmail] = useState("");
 
     useEffect(() => {
-        if (!token) {
-            router.push("/admin/login");
-            return;
+        if (status === "unauthenticated") {
+            router.push("/login?error=Unauthorized");
         }
-        fetchData();
-        const interval = setInterval(fetchData, 5000); // Auto refresh
-        return () => clearInterval(interval);
-    }, [token, router]);
+        if (status === "authenticated") {
+            fetchData();
+            const interval = setInterval(fetchData, 10000); // 10s auto-refresh
+            return () => clearInterval(interval);
+        }
+    }, [status, router]);
 
     const fetchData = async () => {
-        const opts = { headers: { Authorization: `Bearer ${token}` } };
         try {
-            const [confRes, attRes] = await Promise.all([
-                fetch("/api/admin/config", opts),
-                fetch("/api/admin/attendance", opts),
+            const [sessRes, adminRes] = await Promise.all([
+                fetch("/api/admin/sessions"),
+                fetch("/api/admin/admins")
             ]);
-            if (confRes.status === 401 || attRes.status === 401) {
-                localStorage.removeItem("admin_token");
-                router.push("/admin/login");
-                return;
+            if (sessRes.ok) {
+                const data = await sessRes.json();
+                setSessions(data.sessions);
+                setAdminIp(data.adminIp);
             }
-            setConfig(await confRes.json());
-            setAttendance(await attRes.json());
+            if (adminRes.ok) {
+                const data = await adminRes.json();
+                setAdmins(data.admins);
+            }
         } catch (e) {
             console.error(e);
         }
     };
 
-    const updateConfig = async (action: string, payload: any = {}) => {
-        await fetch("/api/admin/config", {
+    const startSession = async () => {
+        if (!className) return alert("Please enter a Class Name");
+        await fetch("/api/admin/sessions", {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ action, ...payload }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "start", className })
+        });
+        setClassName("");
+        fetchData();
+    };
+
+    const stopSession = async (sessionId: string) => {
+        if (!confirm("Are you sure? This will end the session and email you the CSV report.")) return;
+        await fetch("/api/admin/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop", sessionId })
         });
         fetchData();
     };
 
-    const deleteRecord = async (studentId: string) => {
-        if (confirm("Remove this record?")) {
-            await fetch(`/api/admin/attendance?studentId=${studentId}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            fetchData();
-        }
+    const addAdmin = async () => {
+        if (!newAdminEmail) return;
+        const res = await fetch("/api/admin/admins", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: newAdminEmail })
+        });
+        const data = await res.json();
+        if (data.error) alert(data.error);
+        setNewAdminEmail("");
+        fetchData();
     };
 
-    const exportCSV = () => {
-        if (attendance.length === 0) return;
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + "Student ID,Email,Time,IP Address\n"
-            + attendance.map(e => `${e.studentId},${e.email},${new Date(e.timestamp).toLocaleTimeString()},${e.ip}`).join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `attendance_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
+    const removeAdmin = async (email: string) => {
+        if (!confirm(`Remove ${email} from admins?`)) return;
+        const res = await fetch(`/api/admin/admins?email=${encodeURIComponent(email)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) alert(data.error);
+        fetchData();
     };
 
-    if (!config) return <div className="text-white p-8">Loading...</div>;
+    if (status === "loading" || !session) return <div className="text-center p-8 text-black">Loading Dashboard...</div>;
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 p-8 font-sans">
             <div className="max-w-6xl mx-auto space-y-8">
 
-                {/* Header */}
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-slate-800">Admin Dashboard</h1>
-                        <p className="text-slate-500">Manage local network attendance</p>
+                        <p className="text-slate-500">Logged in as <span className="font-semibold text-indigo-600">{session.user?.email}</span></p>
                     </div>
-                    <button onClick={() => { localStorage.removeItem("admin_token"); router.push("/admin/login"); }} className="text-sm font-medium text-slate-500 hover:text-slate-800">
+                    <button onClick={() => signOut({ callbackUrl: '/login' })} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors">
                         Log out
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                    {/* Card 1: Session Control */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 col-span-1 md:col-span-2">
-                        <h2 className="text-lg font-semibold mb-4">Session Control</h2>
-                        <div className="flex items-end gap-4">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-slate-600 mb-1">Duration (minutes)</label>
-                                <input type="number" value={timerMins} onChange={e => setTimerMins(parseInt(e.target.value) || 1)} disabled={config.sessionActive} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                    {/* Class Session Manager */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
+                        <h2 className="text-xl font-bold border-b border-slate-100 pb-4 mb-4">Start New Session</h2>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-slate-600 mb-1">Course Code / Class Name</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. CSE110 Section 5"
+                                value={className}
+                                onChange={e => setClassName(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                        {adminIp && (
+                            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                <p className="text-sm font-medium text-indigo-800">Your Current Network IP</p>
+                                <p className="text-xs text-indigo-600 mt-1">
+                                    The session will be locked to this exact IP address (<strong>{adminIp}</strong>). Students must be on the same WiFi network.
+                                </p>
                             </div>
-                            <div className="flex-1">
-                                <p className="text-sm font-medium text-slate-600 mb-2">Status</p>
-                                {config.sessionActive ? (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                                        Active (Ends {new Date(config.endTime).toLocaleTimeString()})
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                                        Inactive
-                                    </span>
-                                )}
-                            </div>
-                            <div>
-                                {!config.sessionActive ? (
-                                    <button onClick={() => updateConfig("start", { timeLimitMins: timerMins })} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow-sm transition-colors">
-                                        Start Session
-                                    </button>
-                                ) : (
-                                    <button onClick={() => updateConfig("stop")} className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium shadow-sm transition-colors">
-                                        Stop Session
-                                    </button>
-                                )}
-                            </div>
+                        )}
+                        <div className="mt-auto pt-4">
+                            <button onClick={startSession} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20 transition-all flex justify-center items-center gap-2">
+                                Start Session & Lock IP
+                            </button>
                         </div>
                     </div>
 
-                    {/* Card 2: Configuration */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 col-span-1">
-                        <h2 className="text-lg font-semibold mb-4">Network Config</h2>
-
-                        {(config as any).adminIp && (
-                            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                                <p className="text-xs font-semibold text-blue-600 mb-1">Your Current Public IP</p>
-                                <p className="text-sm font-mono text-blue-900">{(config as any).adminIp}</p>
+                    {/* Admin Manager */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
+                        <h2 className="text-xl font-bold border-b border-slate-100 pb-4 mb-4">Manage Admins</h2>
+                        <div className="flex gap-2 mb-6">
+                            <input
+                                type="email"
+                                placeholder="e.g. teacher@g.bracu.ac.bd"
+                                value={newAdminEmail}
+                                onChange={e => setNewAdminEmail(e.target.value)}
+                                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <button onClick={addAdmin} className="px-6 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold transition-colors">
+                                Add
+                            </button>
+                        </div>
+                        <h3 className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Current Admins</h3>
+                        <div className="overflow-y-auto max-h-48 space-y-2 pr-2">
+                            <div className="flex justify-between items-center p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                <span className="font-medium text-sm text-slate-700">islamproloy@gmail.com</span>
+                                <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded">MASTER</span>
                             </div>
-                        )}
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-600 mb-1">Allowed IP Prefix</label>
-                            <div className="flex gap-2">
-                                <input type="text" placeholder="192.168.1." value={ipPrefix || config.allowedIpPrefix} onChange={e => setIpPrefix(e.target.value)} className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500" />
-                                <button onClick={() => updateConfig("update_ip", { allowedIpPrefix: ipPrefix || config.allowedIpPrefix })} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-medium">Save</button>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-2">Example: <code>192.168.1.</code> matches all IPs starting with it.</p>
+                            {admins.map(a => (
+                                <div key={a._id} className="flex justify-between items-center p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                    <span className="font-medium text-sm text-slate-700">{a.email}</span>
+                                    <button onClick={() => removeAdmin(a.email)} className="text-red-500 hover:text-red-700 text-sm font-medium px-2">Remove</button>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
                 </div>
 
-                {/* Table List */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-                        <h2 className="text-lg font-semibold">Attendance List ({attendance.length} students)</h2>
-                        <div className="space-x-3">
-                            <button onClick={() => updateConfig("clear_attendance")} className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors">Clear All</button>
-                            <button onClick={exportCSV} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">Export CSV</button>
+                {/* Active Sessions */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h2 className="text-xl font-bold border-b border-slate-100 pb-4 mb-6">Active Sessions</h2>
+
+                    {sessions.length === 0 ? (
+                        <div className="text-center py-12 text-slate-400">
+                            No active class sessions right now.
                         </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 text-slate-500 text-sm">
-                                    <th className="p-4 font-medium border-b border-slate-200">Student ID</th>
-                                    <th className="p-4 font-medium border-b border-slate-200">Email</th>
-                                    <th className="p-4 font-medium border-b border-slate-200">Time</th>
-                                    <th className="p-4 font-medium border-b border-slate-200">IP Address</th>
-                                    <th className="p-4 font-medium border-b border-slate-200">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {attendance.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5} className="p-8 text-center text-slate-400 border-b border-slate-100">No attendance recorded yet.</td>
-                                    </tr>
-                                ) : (
-                                    attendance.map(a => (
-                                        <tr key={a.studentId} className="hover:bg-slate-50 border-b border-slate-100">
-                                            <td className="p-4 font-medium text-slate-800">{a.studentId}</td>
-                                            <td className="p-4 text-slate-600">{a.email}</td>
-                                            <td className="p-4 text-slate-600">{new Date(a.timestamp).toLocaleTimeString()}</td>
-                                            <td className="p-4 text-slate-600">{a.ip}</td>
-                                            <td className="p-4">
-                                                <button onClick={() => deleteRecord(a.studentId)} className="text-red-500 hover:text-red-700 text-sm font-medium">Remove</button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {sessions.map(s => (
+                                <div key={s._id} className="border border-slate-200 rounded-xl p-5 hover:border-indigo-200 transition-colors">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="font-bold text-lg text-slate-800">{s.className}</h3>
+                                            <p className="text-sm text-slate-500">Teacher: {s.teacherEmail}</p>
+                                        </div>
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span> Live
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-1">
+                                        <p className="text-xs text-slate-500 flex justify-between">
+                                            <span>Allowed IP:</span> <span className="font-mono text-slate-700">{s.allowedIp}</span>
+                                        </p>
+                                        <p className="text-xs text-slate-500 flex justify-between">
+                                            <span>Attendance:</span> <span className="font-bold text-indigo-600">{s.attendance?.length || 0} presents</span>
+                                        </p>
+                                        <p className="text-xs text-slate-500 flex justify-between">
+                                            <span>Started:</span> <span className="text-slate-700">{new Date(s.createdAt).toLocaleTimeString()}</span>
+                                        </p>
+                                    </div>
+                                    <button onClick={() => stopSession(s._id)} className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-lg transition-colors border border-red-200">
+                                        Stop Session & Send Report
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
             </div>
         </div>
     );
 }
+

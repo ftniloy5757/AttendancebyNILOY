@@ -1,7 +1,7 @@
 {
   "config": {
     "sessionActive": true,
-    "endTime": 1772821483116,
+    "endTime": 1772822043305,
     "allowedIpPrefix": "::1"
   },
   "attendance": [
@@ -16,6 +16,12 @@
       "email": "student1@university.edu",
       "timestamp": 1772816500740,
       "ip": "127.0.0.1"
+    },
+    {
+      "studentId": "12345678",
+      "email": "student@g.bracu.ac.bd",
+      "timestamp": 1772821646289,
+      "ip": "::1"
     }
   ]
 }
