@@ -58,12 +58,31 @@ export default function AdminDashboard() {
     };
 
     const stopSession = async (sessionId: string) => {
-        if (!confirm("Are you sure? This will end the session and email you the CSV report.")) return;
-        await fetch("/api/admin/sessions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "stop", sessionId })
-        });
+        if (!confirm("Are you sure? This will end the session and download the attendance CSV report.")) return;
+
+        try {
+            const res = await fetch("/api/admin/sessions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "stop", sessionId })
+            });
+            const data = await res.json();
+
+            if (data.success && data.csv) {
+                // Trigger file download
+                const blob = new Blob([data.csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", data.filename || "attendance.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        } catch (err) {
+            console.error("Failed to stop session", err);
+        }
+
         fetchData();
     };
 

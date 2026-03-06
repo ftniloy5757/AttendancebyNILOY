@@ -70,37 +70,13 @@ export async function POST(req: Request) {
             session.endTime = Date.now();
 
             // Generate CSV
-            if (session.attendance.length > 0 && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-                const csvContent = "Student ID,Email,Section,Time,IP Address\n"
+            let csvContent = "";
+            if (session.attendance.length > 0) {
+                csvContent = "Student ID,Email,Section,Time,IP Address\n"
                     + session.attendance.map((e: any) => `${e.studentId},${e.email},${e.section},${new Date(e.timestamp).toLocaleTimeString()},${e.ip}`).join("\n");
-
-                try {
-                    const transporter = nodemailer.createTransport({
-                        service: 'gmail',
-                        auth: {
-                            user: process.env.EMAIL_USER,
-                            pass: process.env.EMAIL_PASS,
-                        },
-                    });
-
-                    await transporter.sendMail({
-                        from: process.env.EMAIL_USER,
-                        to: session.teacherEmail,
-                        subject: `Attendance Report - ${session.className}`,
-                        text: `Please find attached the attendance report for ${session.className}.`,
-                        attachments: [
-                            {
-                                filename: `attendance_${session.className.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`,
-                                content: csvContent,
-                            },
-                        ],
-                    });
-                } catch (emailErr) {
-                    console.error("Failed to send email:", emailErr);
-                }
             }
             writeDb(db);
-            return NextResponse.json({ success: true });
+            return NextResponse.json({ success: true, csv: csvContent, filename: `attendance_${session.className.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv` });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
