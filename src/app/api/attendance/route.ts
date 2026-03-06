@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongoose';
-import Session from '@/models/Session';
+import { readDb, writeDb } from '@/lib/db';
 
 export async function POST(req: Request) {
     try {
@@ -24,12 +23,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Student ID, Section, and Session are required.' }, { status: 400 });
         }
 
-        await dbConnect();
-        const session = await Session.findById(sessionId);
+        const db = readDb();
+        const sessionIndex = db.sessions.findIndex(s => s._id === sessionId);
 
-        if (!session || !session.active) {
+        if (sessionIndex === -1 || !db.sessions[sessionIndex].active) {
             return NextResponse.json({ error: 'This attendance session is no longer active.' }, { status: 403 });
         }
+
+        const session = db.sessions[sessionIndex];
 
         // 2. Exact IP Lock Check
         const headersList = await headers();
@@ -55,10 +56,10 @@ export async function POST(req: Request) {
             email,
             section,
             ip: realIp,
-            timestamp: new Date()
+            timestamp: Date.now()
         });
 
-        await session.save();
+        writeDb(db);
 
         return NextResponse.json({ success: true, message: 'Attendance recorded successfully!' });
 

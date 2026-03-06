@@ -1,7 +1,6 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import dbConnect from "@/lib/mongoose";
-import Admin from "@/models/Admin";
+import { readDb } from "@/lib/db";
 
 export const authOptions: NextAuthOptions = {
     providers: [
@@ -26,9 +25,8 @@ export const authOptions: NextAuthOptions = {
                 if (email === "islamproloy@gmail.com") return true;
 
                 try {
-                    await dbConnect();
-                    const isAdmin = await Admin.findOne({ email });
-                    if (isAdmin) return true;
+                    const db = readDb();
+                    if (db.admins.includes(email)) return true;
                 } catch (err) {
                     console.error("DB lookup failed in NextAuth:", err);
                 }

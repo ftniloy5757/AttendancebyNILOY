@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongoose';
-import Admin from '@/models/Admin';
+import { readDb, writeDb } from '@/lib/db';
 
 async function verifyAdmin() {
     const session = await getServerSession(authOptions);
     if (!session || !session.user?.email) return null;
     if (session.user.email === "islamproloy@gmail.com") return true;
 
-    await dbConnect();
-    const isAdmin = await Admin.findOne({ email: session.user.email.toLowerCase() });
-    if (isAdmin) return true;
+    const db = readDb();
+    if (db.admins.includes(session.user.email.toLowerCase())) return true;
 
     return null;
 }
@@ -19,24 +17,30 @@ async function verifyAdmin() {
 export async function GET(req: Request) {
     if (!await verifyAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await dbConnect();
-    const admins = await Admin.find().sort({ addedAt: -1 });
-    return NextResponse.json({ admins });
+    const db = readDb();
+    // Simulate mongodb shape so we don't have to rewrite the dashboard UI
+    const mappedAdmins = db.admins.map(email => ({ email, _id: email }));
+
+    return NextResponse.json({ admins: mappedAdmins });
 }
 
 export async function POST(req: Request) {
     if (!await verifyAdmin()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        await dbConnect();
         const { email } = await req.json();
-
         if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
 
-        const newAdmin = await Admin.create({ email: email.toLowerCase() });
-        return NextResponse.json({ success: true, admin: newAdmin });
+        const newEmail = email.toLowerCase();
+        const db = readDb();
+
+        if (db.admins.includes(newEmail)) return NextResponse.json({ error: 'Admin already exists' }, { status: 400 });
+
+        db.admins.push(newEmail);
+        writeDb(db);
+
+        return NextResponse.json({ success: true, admin: { email: newEmail, _id: newEmail } });
     } catch (error: any) {
-        if (error.code === 11000) return NextResponse.json({ error: 'Admin already exists' }, { status: 400 });
         return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
 }
@@ -51,8 +55,10 @@ export async function DELETE(req: Request) {
         if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
         if (email === 'islamproloy@gmail.com') return NextResponse.json({ error: 'Cannot remove master admin' }, { status: 400 });
 
-        await dbConnect();
-        await Admin.findOneAndDelete({ email: email.toLowerCase() });
+        const db = readDb();
+        db.admins = db.admins.filter(a => a !== email.toLowerCase());
+        writeDb(db);
+
         return NextResponse.json({ success: true });
     } catch (error) {
         return NextResponse.json({ error: 'Server error' }, { status: 500 });

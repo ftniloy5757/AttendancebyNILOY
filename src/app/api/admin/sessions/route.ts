@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongoose';
-import Session from '@/models/Session';
-import Admin from '@/models/Admin';
+import { readDb, writeDb } from '@/lib/db';
 import { headers } from 'next/headers';
 import nodemailer from 'nodemailer';
 
@@ -19,9 +17,8 @@ async function verifyAdmin() {
     if (!session || !session.user?.email) return null;
     if (session.user.email === "islamproloy@gmail.com") return session.user.email;
 
-    await dbConnect();
-    const isAdmin = await Admin.findOne({ email: session.user.email.toLowerCase() });
-    if (isAdmin) return session.user.email;
+    const db = readDb();
+    if (db.admins.includes(session.user.email.toLowerCase())) return session.user.email;
 
     return null;
 }
@@ -30,11 +27,11 @@ export async function GET(req: Request) {
     const email = await verifyAdmin();
     if (!email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await dbConnect();
-    const sessions = await Session.find({ active: true }).sort({ createdAt: -1 });
+    const db = readDb();
+    const activeSessions = db.sessions.filter(s => s.active).sort((a, b) => b.createdAt - a.createdAt);
     const adminIp = await getClientIp();
 
-    return NextResponse.json({ sessions, adminIp });
+    return NextResponse.json({ sessions: activeSessions, adminIp });
 }
 
 export async function POST(req: Request) {
@@ -42,27 +39,33 @@ export async function POST(req: Request) {
     if (!email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        await dbConnect();
         const body = await req.json();
         const adminIp = await getClientIp();
+        const db = readDb();
 
         if (body.action === 'start') {
-            const newSession = await Session.create({
+            const newSession = {
+                _id: Date.now().toString(),
                 className: body.className || 'General Class',
                 teacherEmail: email,
                 allowedIp: adminIp,
                 active: true,
-            });
+                createdAt: Date.now(),
+                endTime: 0,
+                attendance: []
+            };
+            db.sessions.push(newSession);
+            writeDb(db);
             return NextResponse.json({ success: true, session: newSession });
         }
 
         if (body.action === 'stop') {
-            const session = await Session.findById(body.sessionId);
-            if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+            const sessionIndex = db.sessions.findIndex(s => s._id === body.sessionId);
+            if (sessionIndex === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+            const session = db.sessions[sessionIndex];
             session.active = false;
-            session.endTime = new Date();
-            await session.save();
+            session.endTime = Date.now();
 
             // Generate CSV
             if (session.attendance.length > 0 && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
@@ -94,6 +97,7 @@ export async function POST(req: Request) {
                     console.error("Failed to send email:", emailErr);
                 }
             }
+            writeDb(db);
             return NextResponse.json({ success: true });
         }
 
