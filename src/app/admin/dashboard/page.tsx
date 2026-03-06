@@ -132,6 +132,14 @@ export default function AdminDashboard() {
                     {/* Card 2: Configuration */}
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 col-span-1">
                         <h2 className="text-lg font-semibold mb-4">Network Config</h2>
+
+                        {(config as any).adminIp && (
+                            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                <p className="text-xs font-semibold text-blue-600 mb-1">Your Current Public IP</p>
+                                <p className="text-sm font-mono text-blue-900">{(config as any).adminIp}</p>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-slate-600 mb-1">Allowed IP Prefix</label>
                             <div className="flex gap-2">

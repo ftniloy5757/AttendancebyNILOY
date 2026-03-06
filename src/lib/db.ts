@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 
-const DB_PATH = path.join(process.cwd(), 'database.json');
+// In production (Vercel), we must use /tmp since the root is read-only. Data will not persist.
+const isProd = process.env.NODE_ENV === 'production';
+const DB_PATH = isProd ? path.join('/tmp', 'database.json') : path.join(process.cwd(), 'database.json');
 
 export type Config = {
   sessionActive: boolean;
