@@ -12,7 +12,7 @@ async function getClientIp() {
     return realIp;
 }
 
-const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com'];
+const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com', 'jannat.taposhi@bracu.ac.bd'];
 
 async function verifyAdmin() {
     const session = await getServerSession(authOptions);

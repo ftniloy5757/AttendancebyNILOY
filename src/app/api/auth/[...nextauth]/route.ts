@@ -2,7 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { readDb } from "@/lib/db";
 
-const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com'];
+const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com', 'jannat.taposhi@bracu.ac.bd'];
 
 export const authOptions: NextAuthOptions = {
     providers: [
