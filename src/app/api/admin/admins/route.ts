@@ -3,10 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { readDb, writeDb } from '@/lib/db';
 
+const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com'];
+
 async function verifyAdmin() {
     const session = await getServerSession(authOptions);
     if (!session || !session.user?.email) return null;
-    if (session.user.email === "islamproloy@gmail.com") return true;
+    if (MASTER_ADMINS.includes(session.user.email)) return true;
 
     const db = readDb();
     if (db.admins.includes(session.user.email.toLowerCase())) return true;
@@ -53,7 +55,7 @@ export async function DELETE(req: Request) {
         const email = searchParams.get('email');
 
         if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
-        if (email === 'islamproloy@gmail.com') return NextResponse.json({ error: 'Cannot remove master admin' }, { status: 400 });
+        if (MASTER_ADMINS.includes(email)) return NextResponse.json({ error: 'Cannot remove master admin' }, { status: 400 });
 
         const db = readDb();
         db.admins = db.admins.filter(a => a !== email.toLowerCase());

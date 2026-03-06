@@ -1,46 +1,44 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { readDb } from "@/lib/db";
+
+const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com'];
 
 export const authOptions: NextAuthOptions = {
     providers: [
-        GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID || "",
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-            authorization: {
-                params: {
-                    prompt: "consent",
-                    access_type: "offline",
-                    response_type: "code",
+        CredentialsProvider({
+            name: "Email",
+            credentials: {
+                email: { label: "Email", type: "email", placeholder: "your.email@g.bracu.ac.bd" }
+            },
+            async authorize(credentials) {
+                if (!credentials?.email) return null;
+                const email = credentials.email.toLowerCase().trim();
+
+                // 1. Check if Master Admin
+                if (MASTER_ADMINS.includes(email)) {
+                    return { id: email, email };
                 }
-            }
-        })
-    ],
-    callbacks: {
-        async signIn({ user, account, profile }) {
-            if (account?.provider === "google") {
-                const email = (user?.email || profile?.email || "").toLowerCase();
 
-                // Allow master admin instantly
-                if (email === "islamproloy@gmail.com") return true;
-
+                // 2. Check if dynamically added admin
                 try {
                     const db = readDb();
-                    if (db.admins.includes(email)) return true;
+                    if (db.admins.includes(email)) {
+                        return { id: email, email };
+                    }
                 } catch (err) {
                     console.error("DB lookup failed in NextAuth:", err);
                 }
 
-                // If not admin, check if valid student account
+                // 3. Check if Bracu Student
                 if (email.endsWith("@g.bracu.ac.bd")) {
-                    return true;
+                    return { id: email, email };
                 }
 
-                return "/login?error=Access+Denied.+Only+BRACU+or+Admin+emails+allowed.";
+                return null;
             }
-            return false;
-        },
-    },
+        })
+    ],
     secret: process.env.NEXTAUTH_SECRET || "fallback_secret_for_local_development",
     pages: {
         signIn: '/login',

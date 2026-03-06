@@ -12,10 +12,12 @@ async function getClientIp() {
     return realIp;
 }
 
+const MASTER_ADMINS = ['islamproloy@gmail.com', 'ftniloy5757@gmail.com'];
+
 async function verifyAdmin() {
     const session = await getServerSession(authOptions);
     if (!session || !session.user?.email) return null;
-    if (session.user.email === "islamproloy@gmail.com") return session.user.email;
+    if (MASTER_ADMINS.includes(session.user.email)) return session.user.email;
 
     const db = readDb();
     if (db.admins.includes(session.user.email.toLowerCase())) return session.user.email;
