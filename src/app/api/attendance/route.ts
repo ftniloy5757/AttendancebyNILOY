@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
 import { readDb, writeDb } from '@/lib/db';
 import { headers } from 'next/headers';
+import { getServerSession } from 'next-auth';
 
 export async function POST(req: Request) {
     try {
+        const session = await getServerSession();
+        if (!session || !session.user?.email) {
+            return NextResponse.json({ error: 'Unauthorized: You must be logged in with your varsity account.' }, { status: 401 });
+        }
+
+        const email = session.user.email; // Extracted safely from the server
+
+        if (!email.endsWith("@g.bracu.ac.bd")) {
+            return NextResponse.json({ error: 'Unauthorized: Only @g.bracu.ac.bd accounts allowed.' }, { status: 403 });
+        }
+
         const db = readDb();
 
         // 1. Session check
         if (!db.config.sessionActive || Date.now() > db.config.endTime) {
-            // Auto-stop if expired
             if (db.config.sessionActive && Date.now() > db.config.endTime) {
                 db.config.sessionActive = false;
                 writeDb(db);
@@ -18,17 +29,19 @@ export async function POST(req: Request) {
 
         // 2. IP check
         const headersList = await headers();
-        const realIp = headersList.get('x-real-ip') || 'Unknown';
+        let realIp = headersList.get('x-real-ip') || headersList.get('x-forwarded-for') || 'Unknown';
+        if (realIp.includes(',')) realIp = realIp.split(',')[0].trim();
+
         const allowedPrefix = db.config.allowedIpPrefix.trim();
 
         if (allowedPrefix && !realIp.startsWith(allowedPrefix)) {
             return NextResponse.json({ error: 'You are not on the classroom network (IP Mismatch).' }, { status: 403 });
         }
 
-        const { studentId, email } = await req.json();
+        const { studentId } = await req.json();
 
-        if (!studentId || !email) {
-            return NextResponse.json({ error: 'Student ID and Email are required.' }, { status: 400 });
+        if (!studentId) {
+            return NextResponse.json({ error: 'Student ID is required.' }, { status: 400 });
         }
 
         // 3. Duplicate check
@@ -55,7 +68,6 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-    // We can let students see if a session is currently active
     const db = readDb();
     let status = "Inactive";
     if (db.config.sessionActive) {
