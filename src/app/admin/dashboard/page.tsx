@@ -187,16 +187,32 @@ export default function AdminDashboard() {
                                             <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span> Live
                                         </span>
                                     </div>
-                                    <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-1">
+                                    <div className="bg-slate-50 rounded-lg p-3 mb-4 space-y-2">
                                         <p className="text-xs text-slate-500 flex justify-between">
                                             <span>Allowed IP:</span> <span className="font-mono text-slate-700">{s.allowedIp}</span>
                                         </p>
                                         <p className="text-xs text-slate-500 flex justify-between">
-                                            <span>Attendance:</span> <span className="font-bold text-indigo-600">{s.attendance?.length || 0} presents</span>
-                                        </p>
-                                        <p className="text-xs text-slate-500 flex justify-between">
                                             <span>Started:</span> <span className="text-slate-700">{new Date(s.createdAt).toLocaleTimeString()}</span>
                                         </p>
+
+                                        <div className="pt-2 border-t border-slate-200">
+                                            <p className="text-sm font-bold text-indigo-700 mb-2">Live Attendance ({s.attendance?.length || 0})</p>
+                                            <div className="max-h-32 overflow-y-auto space-y-1 pr-2">
+                                                {s.attendance?.length === 0 ? (
+                                                    <p className="text-xs text-slate-400 italic">No students joined yet.</p>
+                                                ) : (
+                                                    s.attendance?.map((student: any, idx: number) => (
+                                                        <div key={idx} className="bg-white border border-slate-200 p-2 rounded text-xs flex justify-between items-center shadow-sm">
+                                                            <div>
+                                                                <span className="font-bold text-slate-800">{student.studentId}</span>
+                                                                <span className="text-slate-500 ml-2">Sec: {student.section}</span>
+                                                            </div>
+                                                            <span className="text-slate-400">{new Date(student.timestamp).toLocaleTimeString()}</span>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                     <button onClick={() => stopSession(s._id)} className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-lg transition-colors border border-red-200">
                                         Stop Session & Send Report
