@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { readDb, writeDb } from '@/lib/db';
 import { headers } from 'next/headers';
 import { getServerSession } from 'next-auth';
+import { authOptions } from '../auth/[...nextauth]/route';
 
 export async function POST(req: Request) {
     try {
-        const session = await getServerSession();
+        const session = await getServerSession(authOptions);
         if (!session || !session.user?.email) {
             return NextResponse.json({ error: 'Unauthorized: You must be logged in with your varsity account.' }, { status: 401 });
         }
